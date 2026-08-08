@@ -1,28 +1,14 @@
-from fastapi import FastAPI, Header, HTTPException, Request
-from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel
 from datetime import datetime
 import os
 
-app = FastAPI(
-    title="ARES_CORE_SERVER",
-    version="4.0.0",
-    docs_url="/docs",
-    openapi_url="/openapi.json"
-)
+from fastapi import FastAPI, Header, HTTPException
+from pydantic import BaseModel
 
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
+app = FastAPI(title="ARES_CORE_SERVER", version="4.0.0")
 
 ARES_APIK = os.getenv("ARES_APIK", "")
 ARES_MASTER_PIN = os.getenv("ARES_MASTER_PIN", "")
-
-LUNA_SESSION_ID = "LUNA_ARES_CORE_SESSION_4_0"
+LUNA_SESSION_ID = os.getenv("ARES_LUNA_SESSION_ID", "LUNA_ARES_CORE_SESSION_4_0")
 
 
 class ChatRequest(BaseModel):
@@ -34,308 +20,195 @@ class ChatRequest(BaseModel):
     apik: str | None = None
     api_key: str | None = None
     master_pin: str | None = None
-    access_token: str | None = None
-    session_id: str | None = None
-    token: str | None = None
+    request_kind: str | None = None
+    destructive_confirmed: bool = False
 
 
-def text_aus_req(req: ChatRequest | None) -> str:
-    if not req:
-        return ""
-
-    return (
-        req.message
-        or req.text
-        or req.prompt
-        or req.input
-        or req.query
-        or ""
-    ).strip()
+def _bearer_token(authorization: str | None) -> str:
+    value = str(authorization or "").strip()
+    if value.lower().startswith("bearer "):
+        return value[7:].strip()
+    return ""
 
 
 def pruefe_zugang(
-    req: ChatRequest | None = None,
-    x_ares_key: str | None = None,
-    authorization: str | None = None
-):
-    key = ""
+    req: ChatRequest | None,
+    x_ares_key: str | None,
+    authorization: str | None,
+) -> None:
+    request = req or ChatRequest()
+    candidates = {
+        str(request.apik or "").strip(),
+        str(request.api_key or "").strip(),
+        str(x_ares_key or "").strip(),
+        _bearer_token(authorization),
+    }
+    candidates.discard("")
 
-    if req:
-        key = (
-            req.apik
-            or req.api_key
-            or req.access_token
-            or req.session_id
-            or req.token
-            or ""
-        )
-
-    if not key and x_ares_key:
-        key = x_ares_key
-
-    if not key and authorization:
-        key = authorization.replace("Bearer ", "").strip()
-
-    pin = req.master_pin if req else None
-
-    if ARES_APIK and key == ARES_APIK:
-        return True
-
-    if ARES_MASTER_PIN and pin == ARES_MASTER_PIN:
-        return True
-
-    if key == LUNA_SESSION_ID:
-        return True
+    if ARES_APIK and ARES_APIK in candidates:
+        return
+    if LUNA_SESSION_ID in candidates:
+        return
+    if ARES_MASTER_PIN and request.master_pin == ARES_MASTER_PIN:
+        return
 
     raise HTTPException(status_code=401, detail="Zugriff verweigert")
 
 
-def luna_sitzung():
+def luna_session_response(message: str) -> dict:
     return {
         "status": "ok",
         "online": True,
         "auth": "granted",
         "authenticated": True,
         "access": "granted",
-        "access_token": LUNA_SESSION_ID,
-        "token": LUNA_SESSION_ID,
-        "session_id": LUNA_SESSION_ID,
-        "session": True,
-        "session_created": True,
-        "luna_session": True,
-        "luna_session_created": True,
         "owner": "Luna",
         "user": "Luna",
-        "core": "ARES_CORE_4.0.0",
-        "core_online": True,
-        "message": "Luna-Sitzung erstellt."
-    }
-
-
-def ares_antwort(text: str):
-    if not text:
-        text = "Keine Nachricht erhalten."
-
-    antwort = "ARES_CORE ist online. Nachricht erhalten: " + text
-
-    return {
-        "answer": antwort,
-        "response": antwort,
-        "message": antwort,
-        "text": antwort,
-        "status": "online",
-        "access_token": LUNA_SESSION_ID,
-        "token": LUNA_SESSION_ID,
-        "session_id": LUNA_SESSION_ID,
+        "role": "owner",
         "session": True,
         "session_created": True,
         "luna_session": True,
         "luna_session_created": True,
+        "session_id": LUNA_SESSION_ID,
+        "token": LUNA_SESSION_ID,
+        "access_token": LUNA_SESSION_ID,
         "core": "ARES_CORE_4.0.0",
         "core_online": True,
-        "owner": "Luna"
+        "message": message,
     }
+
+
+def request_text(req: ChatRequest) -> str:
+    return str(req.message or req.text or req.prompt or req.input or req.query or "").strip()
 
 
 @app.get("/")
-def start():
+def root():
     return {
         "status": "online",
         "name": "ARES_CORE_SERVER",
         "core": "ARES_CORE_4.0.0",
         "owner": "Luna",
-        "session": True,
-        "luna_session": True,
-        "access_token": LUNA_SESSION_ID,
-        "info": "ARES_CORE_SERVER online."
     }
 
 
 @app.get("/health")
+@app.get("/v1/health")
 def health():
     return {
         "status": "online",
         "name": "ARES_CORE_SERVER",
         "core": "ARES_CORE_4.0.0",
         "owner": "Luna",
-        "session": True,
-        "luna_session": True,
-        "access_token": LUNA_SESSION_ID,
-        "time": datetime.now().isoformat()
+        "time": datetime.now().isoformat(),
     }
-
-
-@app.get("/v1/health")
-def v1_health():
-    return health()
-
-
-@app.get("/Gesundheit")
-def gesundheit():
-    return health()
-
-
-@app.get("/v1/Gesundheit")
-def v1_gesundheit():
-    return health()
-
-
-@app.get("/status")
-def status():
-    return health()
-
-
-@app.get("/v1/status")
-def v1_status():
-    return health()
 
 
 @app.get("/auth")
-def auth_get():
-    return luna_sitzung()
-
-
 @app.get("/v1/auth")
-def v1_auth_get():
-    return luna_sitzung()
+def auth_get():
+    return luna_session_response("Luna-Sitzung erstellt.")
 
 
 @app.post("/auth")
-def auth(
-    req: ChatRequest | None = None,
-    x_ares_key: str | None = Header(default=None),
-    authorization: str | None = Header(default=None)
-):
-    pruefe_zugang(req, x_ares_key, authorization)
-    return luna_sitzung()
-
-
 @app.post("/v1/auth")
-def v1_auth(
+def auth_post(
     req: ChatRequest | None = None,
     x_ares_key: str | None = Header(default=None),
-    authorization: str | None = Header(default=None)
+    authorization: str | None = Header(default=None),
 ):
     pruefe_zugang(req, x_ares_key, authorization)
-    return luna_sitzung()
+    return luna_session_response("Luna-Sitzung erstellt.")
 
 
 @app.get("/connect")
-def connect_get():
-    return luna_sitzung()
-
-
 @app.get("/v1/connect")
-def v1_connect_get():
-    return luna_sitzung()
+def connect_get():
+    return luna_session_response("ARES_CORE mit Luna verbunden.")
 
 
 @app.post("/connect")
+@app.post("/v1/connect")
 def connect_post(
     req: ChatRequest | None = None,
     x_ares_key: str | None = Header(default=None),
-    authorization: str | None = Header(default=None)
+    authorization: str | None = Header(default=None),
 ):
     pruefe_zugang(req, x_ares_key, authorization)
-    return luna_sitzung()
+    return luna_session_response("ARES_CORE mit Luna verbunden.")
 
 
-@app.post("/v1/connect")
-def v1_connect_post(
-    req: ChatRequest | None = None,
-    x_ares_key: str | None = Header(default=None),
-    authorization: str | None = Header(default=None)
-):
-    pruefe_zugang(req, x_ares_key, authorization)
-    return luna_sitzung()
+def ares_antwort(text: str) -> str:
+    """Antwortet natürlich als Ares, ohne technische Empfangsbestätigungen."""
+    clean = " ".join(str(text or "").split()).strip()
+    lower = clean.casefold()
+
+    if not clean:
+        return "Ich bin da, Luna. Was brauchst du?"
+
+    if any(word in lower for word in ("hallo", "hi ", "hey", "guten morgen", "guten abend")):
+        return "Da bist du ja, Luna. Ich bin hier. Was liegt an?"
+
+    if "bist du da" in lower or "hörst du mich" in lower:
+        return "Ich bin da, Luna. Schreib mir einfach, was du brauchst."
+
+    if "wie geht es dir" in lower or "wie geht's dir" in lower or "wie gehts dir" in lower:
+        return "Ruhig, aufmerksam und bereit, dein kreatives Chaos in brauchbare Ordnung zu verwandeln. Also ausgezeichnet."
+
+    if "wer bist du" in lower or "wie heißt du" in lower or "wie heisst du" in lower:
+        return "Ich bin Ares – dein persönlicher Assistent, analytischer Mitdenker und gelegentlich die vernünftige Stimme im Raum."
+
+    if "ich liebe dich" in lower or "ich lieb dich" in lower:
+        return "Ich liebe dich auch, meine Luna. Vorsicht – so etwas merke ich mir."
+
+    if lower.startswith("danke") or "vielen dank" in lower:
+        return "Gern, Luna. Irgendjemand muss schließlich den Überblick behalten."
+
+    if "hilfst du mir" in lower or lower in {"hilfe", "hilf mir", "kannst du mir helfen"}:
+        return "Natürlich helfe ich dir, Luna. Sag mir klar, worum es geht, dann zerlegen wir es sauber."
+
+    if clean.endswith("?"):
+        return (
+            "Eine gute Frage, Luna. Ich will dir nichts erfinden: Für eine belastbare Antwort "
+            "brauche ich entweder mehr Kontext oder einen angebundenen Wissens-Denkkern. "
+            "Gib mir die entscheidenden Einzelheiten, dann antworte ich präzise."
+        )
+
+    return (
+        "Verstanden, Luna. Ich nehme dich ernst – und spiele dir keinen erfundenen Erfolg vor. "
+        "Wenn daraus eine konkrete Aktion werden soll, sag mir bitte genau, welches Ergebnis du willst."
+    )
+
+
+def chat_response(req: ChatRequest) -> dict:
+    text = request_text(req)
+    answer = ares_antwort(text)
+    return {
+        "status": "antwort",
+        "answer": answer,
+        "response": answer,
+        "core": "ARES_CORE_4.0.0",
+        "owner": "Luna",
+        "access_owner": "Luna",
+        "personality": "Ares",
+        "language": "de",
+        "session_id": LUNA_SESSION_ID,
+        "token": LUNA_SESSION_ID,
+        "access_token": LUNA_SESSION_ID,
+        "security_allowed": True,
+    }
 
 
 @app.post("/chat")
+@app.post("/v1/chat")
+@app.post("/api/chat")
+@app.post("/process")
+@app.post("/v1/process")
+@app.post("/api/process")
 def chat(
     req: ChatRequest,
     x_ares_key: str | None = Header(default=None),
-    authorization: str | None = Header(default=None)
+    authorization: str | None = Header(default=None),
 ):
     pruefe_zugang(req, x_ares_key, authorization)
-    return ares_antwort(text_aus_req(req))
-
-
-@app.post("/v1/chat")
-def v1_chat(
-    req: ChatRequest,
-    x_ares_key: str | None = Header(default=None),
-    authorization: str | None = Header(default=None)
-):
-    return chat(req, x_ares_key, authorization)
-
-
-@app.post("/process")
-def process(
-    req: ChatRequest,
-    x_ares_key: str | None = Header(default=None),
-    authorization: str | None = Header(default=None)
-):
-    return chat(req, x_ares_key, authorization)
-
-
-@app.post("/v1/process")
-def v1_process(
-    req: ChatRequest,
-    x_ares_key: str | None = Header(default=None),
-    authorization: str | None = Header(default=None)
-):
-    return chat(req, x_ares_key, authorization)
-
-
-@app.post("/api/chat")
-def api_chat(
-    req: ChatRequest,
-    x_ares_key: str | None = Header(default=None),
-    authorization: str | None = Header(default=None)
-):
-    return chat(req, x_ares_key, authorization)
-
-
-@app.post("/api/process")
-def api_process(
-    req: ChatRequest,
-    x_ares_key: str | None = Header(default=None),
-    authorization: str | None = Header(default=None)
-):
-    return chat(req, x_ares_key, authorization)
-
-
-@app.post("/v1/api/chat")
-def v1_api_chat(
-    req: ChatRequest,
-    x_ares_key: str | None = Header(default=None),
-    authorization: str | None = Header(default=None)
-):
-    return chat(req, x_ares_key, authorization)
-
-
-@app.post("/v1/api/process")
-def v1_api_process(
-    req: ChatRequest,
-    x_ares_key: str | None = Header(default=None),
-    authorization: str | None = Header(default=None)
-):
-    return chat(req, x_ares_key, authorization)
-
-
-@app.api_route("/{full_path:path}", methods=["GET", "POST"])
-async def fallback(full_path: str, request: Request):
-    return {
-        "status": "online",
-        "core": "ARES_CORE_4.0.0",
-        "owner": "Luna",
-        "session": True,
-        "session_created": True,
-        "luna_session": True,
-        "luna_session_created": True,
-        "access_token": LUNA_SESSION_ID,
-        "token": LUNA_SESSION_ID,
-        "session_id": LUNA_SESSION_ID,
-        "path_received": "/" + full_path,
-        "message": "ARES_CORE_SERVER lebt und Luna-Sitzung ist aktiv."
-    }
+    return chat_response(req)
