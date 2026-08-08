@@ -3,7 +3,12 @@ from pydantic import BaseModel
 from datetime import datetime
 import os
 
-app = FastAPI()
+app = FastAPI(
+    title="ARES_CORE_SERVER",
+    version="1.0.0",
+    docs_url="/docs",
+    openapi_url="/openapi.json"
+)
 
 ARES_APIK = os.getenv("ARES_APIK", "")
 ARES_MASTER_PIN = os.getenv("ARES_MASTER_PIN", "")
@@ -24,11 +29,20 @@ def pruefe_zugang(req: ChatRequest, header_key: str | None):
 
     raise HTTPException(status_code=401, detail="Zugriff verweigert")
 
+@app.get("/")
+def start():
+    return {
+        "status": "online",
+        "name": "ARES_CORE_SERVER",
+        "info": "Nutze /health oder /chat"
+    }
+
 @app.get("/health")
 def health():
     return {
         "status": "online",
         "name": "ARES_CORE_SERVER",
+        "version": "1.0.0",
         "zeit": datetime.now().isoformat()
     }
 
@@ -41,3 +55,4 @@ def chat(req: ChatRequest, x_ares_key: str | None = Header(default=None)):
         "core": "ARES_CORE_4.0.0",
         "owner": "Luna"
     }
+    
