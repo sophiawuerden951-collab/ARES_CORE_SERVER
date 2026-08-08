@@ -34,11 +34,15 @@ class ChatRequest(BaseModel):
     apik: str | None = None
     api_key: str | None = None
     master_pin: str | None = None
+    access_token: str | None = None
+    session_id: str | None = None
+    token: str | None = None
 
 
 def text_aus_req(req: ChatRequest | None) -> str:
     if not req:
         return ""
+
     return (
         req.message
         or req.text
@@ -49,11 +53,22 @@ def text_aus_req(req: ChatRequest | None) -> str:
     ).strip()
 
 
-def pruefe_zugang(req: ChatRequest | None = None, x_ares_key: str | None = None, authorization: str | None = None):
+def pruefe_zugang(
+    req: ChatRequest | None = None,
+    x_ares_key: str | None = None,
+    authorization: str | None = None
+):
     key = ""
 
     if req:
-        key = req.apik or req.api_key or ""
+        key = (
+            req.apik
+            or req.api_key
+            or req.access_token
+            or req.session_id
+            or req.token
+            or ""
+        )
 
     if not key and x_ares_key:
         key = x_ares_key
@@ -69,6 +84,9 @@ def pruefe_zugang(req: ChatRequest | None = None, x_ares_key: str | None = None,
     if ARES_MASTER_PIN and pin == ARES_MASTER_PIN:
         return True
 
+    if key == LUNA_SESSION_ID:
+        return True
+
     raise HTTPException(status_code=401, detail="Zugriff verweigert")
 
 
@@ -79,14 +97,15 @@ def luna_sitzung():
         "auth": "granted",
         "authenticated": True,
         "access": "granted",
-        "owner": "Luna",
-        "user": "Luna",
+        "access_token": LUNA_SESSION_ID,
+        "token": LUNA_SESSION_ID,
+        "session_id": LUNA_SESSION_ID,
         "session": True,
         "session_created": True,
         "luna_session": True,
         "luna_session_created": True,
-        "session_id": LUNA_SESSION_ID,
-        "token": LUNA_SESSION_ID,
+        "owner": "Luna",
+        "user": "Luna",
         "core": "ARES_CORE_4.0.0",
         "core_online": True,
         "message": "Luna-Sitzung erstellt."
@@ -105,13 +124,16 @@ def ares_antwort(text: str):
         "message": antwort,
         "text": antwort,
         "status": "online",
+        "access_token": LUNA_SESSION_ID,
+        "token": LUNA_SESSION_ID,
+        "session_id": LUNA_SESSION_ID,
+        "session": True,
+        "session_created": True,
+        "luna_session": True,
+        "luna_session_created": True,
         "core": "ARES_CORE_4.0.0",
         "core_online": True,
-        "owner": "Luna",
-        "session": True,
-        "session_id": LUNA_SESSION_ID,
-        "luna_session": True,
-        "luna_session_created": True
+        "owner": "Luna"
     }
 
 
@@ -124,6 +146,7 @@ def start():
         "owner": "Luna",
         "session": True,
         "luna_session": True,
+        "access_token": LUNA_SESSION_ID,
         "info": "ARES_CORE_SERVER online."
     }
 
@@ -137,6 +160,7 @@ def health():
         "owner": "Luna",
         "session": True,
         "luna_session": True,
+        "access_token": LUNA_SESSION_ID,
         "time": datetime.now().isoformat()
     }
 
@@ -148,6 +172,11 @@ def v1_health():
 
 @app.get("/Gesundheit")
 def gesundheit():
+    return health()
+
+
+@app.get("/v1/Gesundheit")
+def v1_gesundheit():
     return health()
 
 
@@ -172,13 +201,21 @@ def v1_auth_get():
 
 
 @app.post("/auth")
-def auth(req: ChatRequest | None = None, x_ares_key: str | None = Header(default=None), authorization: str | None = Header(default=None)):
+def auth(
+    req: ChatRequest | None = None,
+    x_ares_key: str | None = Header(default=None),
+    authorization: str | None = Header(default=None)
+):
     pruefe_zugang(req, x_ares_key, authorization)
     return luna_sitzung()
 
 
 @app.post("/v1/auth")
-def v1_auth(req: ChatRequest | None = None, x_ares_key: str | None = Header(default=None), authorization: str | None = Header(default=None)):
+def v1_auth(
+    req: ChatRequest | None = None,
+    x_ares_key: str | None = Header(default=None),
+    authorization: str | None = Header(default=None)
+):
     pruefe_zugang(req, x_ares_key, authorization)
     return luna_sitzung()
 
@@ -194,45 +231,95 @@ def v1_connect_get():
 
 
 @app.post("/connect")
-def connect_post(req: ChatRequest | None = None, x_ares_key: str | None = Header(default=None), authorization: str | None = Header(default=None)):
+def connect_post(
+    req: ChatRequest | None = None,
+    x_ares_key: str | None = Header(default=None),
+    authorization: str | None = Header(default=None)
+):
     pruefe_zugang(req, x_ares_key, authorization)
     return luna_sitzung()
 
 
 @app.post("/v1/connect")
-def v1_connect_post(req: ChatRequest | None = None, x_ares_key: str | None = Header(default=None), authorization: str | None = Header(default=None)):
+def v1_connect_post(
+    req: ChatRequest | None = None,
+    x_ares_key: str | None = Header(default=None),
+    authorization: str | None = Header(default=None)
+):
     pruefe_zugang(req, x_ares_key, authorization)
     return luna_sitzung()
 
 
 @app.post("/chat")
-def chat(req: ChatRequest, x_ares_key: str | None = Header(default=None), authorization: str | None = Header(default=None)):
+def chat(
+    req: ChatRequest,
+    x_ares_key: str | None = Header(default=None),
+    authorization: str | None = Header(default=None)
+):
     pruefe_zugang(req, x_ares_key, authorization)
     return ares_antwort(text_aus_req(req))
 
 
 @app.post("/v1/chat")
-def v1_chat(req: ChatRequest, x_ares_key: str | None = Header(default=None), authorization: str | None = Header(default=None)):
+def v1_chat(
+    req: ChatRequest,
+    x_ares_key: str | None = Header(default=None),
+    authorization: str | None = Header(default=None)
+):
     return chat(req, x_ares_key, authorization)
 
 
 @app.post("/process")
-def process(req: ChatRequest, x_ares_key: str | None = Header(default=None), authorization: str | None = Header(default=None)):
+def process(
+    req: ChatRequest,
+    x_ares_key: str | None = Header(default=None),
+    authorization: str | None = Header(default=None)
+):
     return chat(req, x_ares_key, authorization)
 
 
 @app.post("/v1/process")
-def v1_process(req: ChatRequest, x_ares_key: str | None = Header(default=None), authorization: str | None = Header(default=None)):
+def v1_process(
+    req: ChatRequest,
+    x_ares_key: str | None = Header(default=None),
+    authorization: str | None = Header(default=None)
+):
     return chat(req, x_ares_key, authorization)
 
 
 @app.post("/api/chat")
-def api_chat(req: ChatRequest, x_ares_key: str | None = Header(default=None), authorization: str | None = Header(default=None)):
+def api_chat(
+    req: ChatRequest,
+    x_ares_key: str | None = Header(default=None),
+    authorization: str | None = Header(default=None)
+):
     return chat(req, x_ares_key, authorization)
 
 
 @app.post("/api/process")
-def api_process(req: ChatRequest, x_ares_key: str | None = Header(default=None), authorization: str | None = Header(default=None)):
+def api_process(
+    req: ChatRequest,
+    x_ares_key: str | None = Header(default=None),
+    authorization: str | None = Header(default=None)
+):
+    return chat(req, x_ares_key, authorization)
+
+
+@app.post("/v1/api/chat")
+def v1_api_chat(
+    req: ChatRequest,
+    x_ares_key: str | None = Header(default=None),
+    authorization: str | None = Header(default=None)
+):
+    return chat(req, x_ares_key, authorization)
+
+
+@app.post("/v1/api/process")
+def v1_api_process(
+    req: ChatRequest,
+    x_ares_key: str | None = Header(default=None),
+    authorization: str | None = Header(default=None)
+):
     return chat(req, x_ares_key, authorization)
 
 
@@ -246,6 +333,8 @@ async def fallback(full_path: str, request: Request):
         "session_created": True,
         "luna_session": True,
         "luna_session_created": True,
+        "access_token": LUNA_SESSION_ID,
+        "token": LUNA_SESSION_ID,
         "session_id": LUNA_SESSION_ID,
         "path_received": "/" + full_path,
         "message": "ARES_CORE_SERVER lebt und Luna-Sitzung ist aktiv."
