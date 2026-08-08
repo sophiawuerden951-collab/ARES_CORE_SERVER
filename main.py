@@ -55,4 +55,49 @@ def chat(req: ChatRequest, x_ares_key: str | None = Header(default=None)):
         "core": "ARES_CORE_4.0.0",
         "owner": "Luna"
     }
-    
+    @app.post("/v1/auth")
+def v1_auth(req: ChatRequest, x_ares_key: str | None = Header(default=None)):
+    pruefe_zugang(req, x_ares_key)
+    return {
+        "status": "ok",
+        "auth": "granted",
+        "core": "ARES_CORE_4.0.0",
+        "owner": "Luna"
+    }
+
+@app.post("/v1/process")
+def v1_process(req: ChatRequest, x_ares_key: str | None = Header(default=None)):
+    pruefe_zugang(req, x_ares_key)
+    return {
+        "answer": "ARES_CORE ist online. Nachricht erhalten: " + req.message,
+        "core": "ARES_CORE_4.0.0",
+        "owner": "Luna"
+    }
+
+@app.post("/auth")
+def auth(req: ChatRequest, x_ares_key: str | None = Header(default=None)):
+    pruefe_zugang(req, x_ares_key)
+    return {
+        "status": "ok",
+        "auth": "granted",
+        "core": "ARES_CORE_4.0.0",
+        "owner": "Luna"
+    }
+
+@app.post("/process")
+def process(req: ChatRequest, x_ares_key: str | None = Header(default=None)):
+    pruefe_zugang(req, x_ares_key)
+    return {
+        "answer": "ARES_CORE ist online. Nachricht erhalten: " + req.message,
+        "core": "ARES_CORE_4.0.0",
+        "owner": "Luna"
+    }
+
+@app.get("/v1/health")
+def v1_health():
+    return {
+        "status": "online",
+        "name": "ARES_CORE_SERVER",
+        "core": "ARES_CORE_4.0.0",
+        "owner": "Luna"
+    }
